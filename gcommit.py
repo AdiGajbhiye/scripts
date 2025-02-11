@@ -15,7 +15,19 @@ if OPENAI_API_KEY == "your-api-key-here":
     exit(1)
 
 
-def get_git_diff(commit_hash):
+def get_git_diff():
+    """Get the current git diff as a string."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached"], capture_output=True, text=True
+        )
+        return result.stdout.strip()
+    except Exception as e:
+        print("Error fetching git diff:", e)
+        return None
+
+
+def get_git_commit_content(commit_hash):
     """Get the git diff for a specific commit."""
     try:
         result = subprocess.run(
@@ -100,7 +112,7 @@ def get_last_commit_messages():
         commit_hashes = result.stdout.split("\n")
 
         for commit_hash in commit_hashes:
-            diff = get_git_diff(commit_hash)
+            diff = get_git_commit_content(commit_hash)
             if diff:
                 generated_message = generate_commit_message(diff)
                 print(f"Commit {commit_hash[:7]}: {generated_message}")
@@ -130,7 +142,7 @@ def main():
         get_last_commit_messages()
         return
 
-    diff = get_git_diff("HEAD")
+    diff = get_git_diff()
     if not diff:
         print("No staged changes. Use 'git add' before running gcommit.")
         return
