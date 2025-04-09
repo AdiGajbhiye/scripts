@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.11
 import os
 import subprocess
-from groq import Groq
+from groq import Groq  # type: ignore
 import argparse
 import tempfile
 
@@ -11,9 +11,7 @@ client = Groq(
 
 # Ensure the Groq API key is set
 if not os.environ.get("GROQ_API_KEY"):
-    print(
-        "Please set your Groq API key as an environment variable GROQ_API_KEY."
-    )
+    print("Please set your Groq API key as an environment variable GROQ_API_KEY.")
     exit(1)
 
 

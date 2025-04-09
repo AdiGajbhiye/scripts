@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.11
 import os
 import subprocess
-from groq import Groq
+from groq import Groq  # type: ignore
 import argparse
 
 client = Groq(
