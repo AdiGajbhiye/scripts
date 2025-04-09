@@ -10,9 +10,7 @@ client = Groq(
 
 # Ensure the Groq API key is set
 if not os.environ.get("GROQ_API_KEY"):
-    print(
-        "Please set your Groq API key as an environment variable GROQ_API_KEY."
-    )
+    print("Please set your Groq API key as an environment variable GROQ_API_KEY.")
     exit(1)
 
 
@@ -35,7 +33,7 @@ def generate_command(natural_language_description):
                     "content": f"Generate a bash command for: {natural_language_description}",
                 },
             ],
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
         )
         return chat_completion.choices[0].message.content.strip()
     except Exception as e:
@@ -46,23 +44,15 @@ def generate_command(natural_language_description):
 def execute_command(command, quiet=False):
     """Execute the generated command."""
     try:
-        result = subprocess.run(
-            command, shell=True, text=True, capture_output=True
-        )
-        if quiet:
-            # In quiet mode, only output stdout for piping
-            if result.stdout:
-                print(result.stdout, end="")
-            return result.returncode == 0
-        else:
-            # In normal mode, show command and output
+        result = subprocess.run(command, shell=True, text=True, capture_output=True)
+        if not quiet:
             print(f"Command: {command}")
             print("-" * 50)
-            if result.stdout:
-                print(result.stdout, end="")
-            if result.stderr:
-                print(result.stderr, end="")
-            return result.returncode == 0
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="")
+        return result.returncode == 0
     except Exception as e:
         if not quiet:
             print("Error executing command:", e)
@@ -104,4 +94,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
