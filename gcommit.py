@@ -1,16 +1,18 @@
 #!/usr/bin/env python3.11
 import os
 import subprocess
-from openai import OpenAI
+from groq import Groq
 import argparse
 import tempfile
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
-client = OpenAI(api_key=OPENAI_API_KEY)
-# Ensure the OpenAI API key is set
-if OPENAI_API_KEY == "your-api-key-here":
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
+
+# Ensure the Groq API key is set
+if not os.environ.get("GROQ_API_KEY"):
     print(
-        "Please set your OpenAI API key as an environment variable or replace 'your-api-key-here' with your actual key."
+        "Please set your Groq API key as an environment variable GROQ_API_KEY."
     )
     exit(1)
 
@@ -42,14 +44,13 @@ def get_git_commit_content(commit_hash):
 
 
 def generate_commit_message(diff):
-    """Use OpenAI API to generate a commit message based on the diff."""
+    """Use Groq API to generate a commit message based on the diff."""
     if not diff:
         print("No staged changes to commit.")
         return None
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
+        chat_completion = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
@@ -67,10 +68,9 @@ def generate_commit_message(diff):
                     ),
                 },
             ],
-            max_tokens=350,
-            temperature=0.5,
+            model="llama-3.1-8b-instant",
         )
-        return response.choices[0].message.content.strip()
+        return chat_completion.choices[0].message.content.strip()
     except Exception as e:
         print("Error generating commit message:", e)
         return None
@@ -122,7 +122,7 @@ def get_last_commit_messages():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Automatically generate a Git commit message using OpenAI."
+        description="Automatically generate a Git commit message using Groq."
     )
     parser.add_argument(
         "-e",
