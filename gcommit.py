@@ -4,6 +4,7 @@ import subprocess
 from groq import Groq  # type: ignore
 import argparse
 import tempfile
+import re
 
 client = Groq(
     api_key=os.environ.get("GROQ_API_KEY"),
@@ -15,13 +16,122 @@ if not os.environ.get("GROQ_API_KEY"):
     exit(1)
 
 
+def optimize_diff(diff):
+    """Optimize the diff by removing file moves and unnecessary content."""
+    if not diff:
+        return ""
+
+    # Split diff into individual file diffs
+    file_diffs = re.split(r"^diff --git", diff, flags=re.MULTILINE)
+    optimized_diffs = []
+
+    for file_diff in file_diffs:
+        if not file_diff.strip():
+            continue
+
+        # Handle file moves/renames
+        rename_from = re.search(r"^rename from (.+)$", file_diff, re.MULTILINE)
+        rename_to = re.search(r"^rename to (.+)$", file_diff, re.MULTILINE)
+        if rename_from and rename_to:
+            optimized_diffs.append(
+                f"# file renamed from {rename_from.group(1)} to {rename_to.group(1)}\n"
+            )
+            continue
+
+        # Handle binary files
+        binary_match = re.search(
+            r"^Binary files (.+) and (.+) differ$", file_diff, re.MULTILINE
+        )
+        if binary_match:
+            optimized_diffs.append(
+                f"# binary file changed: {binary_match.group(1)} -> {binary_match.group(2)}\n"
+            )
+            continue
+
+        optimized_diffs.append(file_diff)
+
+    return "".join(optimized_diffs)
+
+
+def chunk_diff(diff, max_chunk_size=4000):
+    """Split large diffs into smaller chunks."""
+    if not diff:
+        return []
+
+    # Split by file diffs
+    file_diffs = re.split(r"^diff --git", diff, flags=re.MULTILINE)
+    chunks = []
+    current_chunk = []
+    current_size = 0
+
+    for file_diff in file_diffs:
+        if not file_diff.strip():
+            continue
+
+        # If adding this file would exceed chunk size, start a new chunk
+        if current_size + len(file_diff) > max_chunk_size and current_chunk:
+            chunks.append("".join(current_chunk))
+            current_chunk = []
+            current_size = 0
+
+        current_chunk.append(file_diff)
+        current_size += len(file_diff)
+
+    # Add the last chunk if it exists
+    if current_chunk:
+        chunks.append("".join(current_chunk))
+
+    return chunks
+
+
+def summarize_diff_chunk(chunk):
+    """Generate a summary of a diff chunk using Groq."""
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI that summarizes Git diffs concisely. "
+                        "Focus on the key changes and their impact. "
+                        "Keep the summary under 100 words."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this Git diff chunk:\n{chunk}",
+                },
+            ],
+            model="llama-3.1-8b-instant",
+        )
+        return chat_completion.choices[0].message.content.strip()
+    except Exception as e:
+        print("Error summarizing diff chunk:", e)
+        return None
+
+
 def get_git_diff():
     """Get the current git diff as a string."""
     try:
         result = subprocess.run(
             ["git", "diff", "--cached"], capture_output=True, text=True
         )
-        return result.stdout.strip()
+        diff = result.stdout.strip()
+
+        # Optimize the diff
+        optimized_diff = optimize_diff(diff)
+
+        # If diff is too large, chunk it
+        if len(optimized_diff) > 4000:
+            chunks = chunk_diff(optimized_diff)
+            summaries = []
+            for chunk in chunks:
+                summary = summarize_diff_chunk(chunk)
+                if summary:
+                    summaries.append(summary)
+            return "\n\n".join(summaries)
+
+        return optimized_diff
     except Exception as e:
         print("Error fetching git diff:", e)
         return None
@@ -55,13 +165,13 @@ def generate_commit_message(diff):
                     "content": (
                         "You are an AI that writes concise and meaningful Git commit messages following the Conventional Commits standard. "
                         "Ensure the commit message includes a type tag like 'feat:', 'fix:', 'chore:', 'docs:', 'refactor:', 'test:', etc. "
-                        "Just ouput the commit message. Should be less than 30 words and all lowercase. Should not include quotes."
+                        "Just output the commit message. Should be less than 30 words and all lowercase. Should not include quotes."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Generate a properly formatted Git commit message following Conventional Commits based on the following diff:\n"
+                        "Generate a properly formatted Git commit message following Conventional Commits based on the following changes:\n"
                         f"{diff}"
                     ),
                 },
