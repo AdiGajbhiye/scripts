@@ -21,10 +21,8 @@ if not os.environ.get("GROQ_API_KEY"):
     exit(1)
 
 
-def get_author_commits(
-    author_name: str, max_commits: Optional[int] = None
-) -> Optional[str]:
-    """Get all commits by the specified author."""
+def get_author_commits(author_name: str, max_commits: Optional[int] = None) -> Optional[str]:
+    """Get all commits by the specified author with detailed information."""
     try:
         cmd = [
             "git",
@@ -33,10 +31,12 @@ def get_author_commits(
             "--pretty=format:%h|%ad|%s",
             "--date=short",
             "--name-status",
+            "--stat",
+            "--patch"
         ]
         if max_commits:
             cmd.extend(["-n", str(max_commits)])
-
+        
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return result.stdout
     except subprocess.CalledProcessError as e:
@@ -77,17 +77,19 @@ def chunk_commits(commit_log: str) -> List[str]:
     return chunks
 
 
-def analyze_commit_chunk(chunk: str) -> Dict[str, str]:
-    """Analyze a chunk of commits using Groq API to generate a high-level summary."""
-    prompt = f"""Analyze the following git commit history and provide a high-level summary of the author's contributions.
+def analyze_commit_chunk(chunk: str) -> Dict[str, Any]:
+    """Analyze a chunk of commits using Groq API to generate a detailed summary."""
+    prompt = f"""Analyze the following git commit history and provide a detailed summary of the author's contributions.
     
     Focus on:
     1. Overall impact on the codebase
-    2. Key areas of contribution
-    3. Notable achievements or improvements
-    4. Patterns in their work (e.g., focusing on specific features, bug fixes, etc.)
+    2. Specific features implemented (what they do, how they work)
+    3. Libraries, frameworks, and technologies used
+    4. Code quality indicators (patterns, architecture decisions)
+    5. Notable achievements or improvements
+    6. Technical skills demonstrated (programming languages, tools, methodologies)
     
-    Be concise but informative. Highlight the most significant contributions.
+    Be specific and detailed. Highlight concrete examples from the code changes.
     
     Git commit history:
     {chunk}
@@ -95,8 +97,11 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, str]:
     Respond in the following JSON format:
     {{
         "summary": "A concise paragraph summarizing the author's overall contributions",
-        "key_areas": "List of 2-3 key areas where the author made significant contributions",
-        "notable_achievements": "List of 2-3 notable achievements or improvements"
+        "features": ["Detailed description of feature 1", "Detailed description of feature 2", ...],
+        "technologies": ["Technology 1 with context", "Technology 2 with context", ...],
+        "code_quality": "Analysis of code quality, patterns, and architecture decisions",
+        "technical_skills": ["Skill 1 with evidence", "Skill 2 with evidence", ...],
+        "notable_achievements": ["Achievement 1 with impact", "Achievement 2 with impact", ...]
     }}
     """
     
@@ -105,7 +110,7 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, str]:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that analyzes git commit histories to provide high-level summaries of contributions.",
+                    "content": "You are a helpful assistant that analyzes git commit histories to provide detailed summaries of contributions, focusing on technical skills and implementation details.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -123,37 +128,102 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, str]:
         print(f"Error analyzing commits with Groq: {e}")
         return {
             "summary": "Unable to analyze contributions due to an error.",
-            "key_areas": "No key areas identified.",
-            "notable_achievements": "No notable achievements identified."
+            "features": [],
+            "technologies": [],
+            "code_quality": "No code quality analysis available.",
+            "technical_skills": [],
+            "notable_achievements": []
         }
 
 
-def merge_analyses(analyses: List[Dict[str, str]]) -> Dict[str, str]:
-    """Merge multiple chunk analyses into a single summary."""
+def merge_analyses(analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge multiple chunk analyses into a single comprehensive summary."""
     if not analyses:
         return {
             "summary": "No contributions found.",
-            "key_areas": "No key areas identified.",
-            "notable_achievements": "No notable achievements identified."
+            "features": [],
+            "technologies": [],
+            "code_quality": "No code quality analysis available.",
+            "technical_skills": [],
+            "notable_achievements": []
         }
     
-    # For simplicity, just use the first analysis
-    # In a more sophisticated version, we could combine insights from multiple chunks
-    return analyses[0]
+    # Initialize merged result
+    merged: Dict[str, Any] = {
+        "summary": "",
+        "features": [],
+        "technologies": [],
+        "code_quality": "",
+        "technical_skills": [],
+        "notable_achievements": []
+    }
+    
+    # Combine summaries
+    summaries = [a.get("summary", "") for a in analyses if a.get("summary")]
+    if summaries:
+        merged["summary"] = " ".join(summaries)
+    
+    # Combine lists (features, technologies, skills, achievements)
+    for key in ["features", "technologies", "technical_skills", "notable_achievements"]:
+        for analysis in analyses:
+            if key in analysis and isinstance(analysis[key], list):
+                merged[key].extend(analysis[key])
+    
+    # Combine code quality analysis
+    code_quality = [a.get("code_quality", "") for a in analyses if a.get("code_quality")]
+    if code_quality:
+        merged["code_quality"] = " ".join(code_quality)
+    
+    # Remove duplicates while preserving order
+    for key in ["features", "technologies", "technical_skills", "notable_achievements"]:
+        if isinstance(merged[key], list):
+            merged[key] = list(dict.fromkeys(merged[key]))
+    
+    return merged
 
 
-def format_summary(summary: Dict[str, str], author_name: str) -> str:
+def format_summary(summary: Dict[str, Any], author_name: str) -> str:
     """Format the analysis summary into a readable report."""
     report = [
-        f"\n📊 Contribution Analysis for {author_name}",
-        "=" * (len(author_name) + 25),
+        f"\n📊 Detailed Contribution Analysis for {author_name}",
+        "=" * (len(author_name) + 35),
         f"\n📝 Summary:",
         f"   {summary.get('summary', 'No summary available.')}",
-        f"\n🎯 Key Areas of Contribution:",
-        f"   {summary.get('key_areas', 'No key areas identified.')}",
-        f"\n🏆 Notable Achievements:",
-        f"   {summary.get('notable_achievements', 'No notable achievements identified.')}"
     ]
+    
+    # Add features if available
+    features = summary.get("features", [])
+    if features:
+        report.append(f"\n✨ Implemented Features:")
+        for feature in features:
+            report.append(f"   • {feature}")
+    
+    # Add technologies if available
+    technologies = summary.get("technologies", [])
+    if technologies:
+        report.append(f"\n🔧 Technologies & Libraries:")
+        for tech in technologies:
+            report.append(f"   • {tech}")
+    
+    # Add code quality analysis if available
+    code_quality = summary.get("code_quality", "")
+    if code_quality:
+        report.append(f"\n📈 Code Quality & Architecture:")
+        report.append(f"   {code_quality}")
+    
+    # Add technical skills if available
+    skills = summary.get("technical_skills", [])
+    if skills:
+        report.append(f"\n💻 Technical Skills Demonstrated:")
+        for skill in skills:
+            report.append(f"   • {skill}")
+    
+    # Add notable achievements if available
+    achievements = summary.get("notable_achievements", [])
+    if achievements:
+        report.append(f"\n🏆 Notable Achievements:")
+        for achievement in achievements:
+            report.append(f"   • {achievement}")
     
     return "\n".join(report)
 
