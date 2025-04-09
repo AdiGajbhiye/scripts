@@ -22,27 +22,40 @@ if not os.environ.get("GROQ_API_KEY"):
 
 
 def get_author_commits(
-    author_email: str, max_commits: Optional[int] = None
+    author_identifiers: List[str], max_commits: Optional[int] = None
 ) -> Optional[str]:
-    """Get all commits by the specified author with detailed information."""
+    """Get all commits by the specified author identifiers with detailed information."""
     try:
-        cmd = [
-            "git",
-            "log",
-            "--author=" + author_email,
-            "--pretty=format:%h|%ad|%s",
-            "--date=short",
-            "--name-status",
-            "--stat",
-            "--patch",
-        ]
-        if max_commits:
-            cmd.extend(["-n", str(max_commits)])
+        # Create a shell command that will work reliably
+        author_pattern = "\\|".join(author_identifiers)
 
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        # Build the base command
+        base_cmd = f'git log --author="{author_pattern}" --pretty=format:"%h|%ad|%s" --date=short --name-status'
+
+        # Add max commits if specified
+        if max_commits:
+            base_cmd += f" -n {max_commits}"
+
+        print(f"Executing command: {base_cmd}")
+
+        # Run the command using shell=True for more reliable execution
+        result = subprocess.run(base_cmd, shell=True, capture_output=True, text=True)
+
+        # Check if we got any output
+        if result.returncode != 0:
+            print(f"Error executing git log: {result.stderr}")
+            return None
+
+        if not result.stdout.strip():
+            print("No output from git log command")
+            return None
+
+        # Print a sample of the output for debugging
+        print(f"First 200 characters of output: {result.stdout[:200]}")
+
         return result.stdout
-    except subprocess.CalledProcessError as e:
-        print(f"Error getting git log: {e}")
+    except Exception as e:
+        print(f"Exception in get_author_commits: {e}")
         return None
 
 
@@ -139,16 +152,6 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, Any]:
 
 def merge_analyses(analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Merge multiple chunk analyses into a single comprehensive summary."""
-    if not analyses:
-        return {
-            "summary": "No contributions found.",
-            "features": [],
-            "technologies": [],
-            "code_quality": "No code quality analysis available.",
-            "technical_skills": [],
-            "notable_achievements": [],
-        }
-
     # Initialize merged result
     merged: Dict[str, Any] = {
         "summary": "",
@@ -185,11 +188,14 @@ def merge_analyses(analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
     return merged
 
 
-def format_summary(summary: Dict[str, Any], author_email: str) -> str:
+def format_summary(summary: Dict[str, Any], author_identifiers: List[str]) -> str:
     """Format the analysis summary into a readable report."""
+    # Create a display string for the author identifiers
+    author_display = ", ".join(author_identifiers)
+
     report = [
-        f"\n📊 Detailed Contribution Analysis for {author_email}",
-        "=" * (len(author_email) + 35),
+        f"\n📊 Detailed Contribution Analysis for {author_display}",
+        "=" * (len(author_display) + 35),
         f"\n📝 Summary:",
         f"   {summary.get('summary', 'No summary available.')}",
     ]
@@ -231,10 +237,12 @@ def format_summary(summary: Dict[str, Any], author_email: str) -> str:
     return "\n".join(report)
 
 
-def generate_final_analysis(summary: Dict[str, Any], author_email: str) -> str:
+def generate_final_analysis(
+    summary: Dict[str, Any], author_identifiers: List[str]
+) -> str:
     """Generate a final consolidated analysis using the LLM."""
     # Format the initial summary
-    initial_summary = format_summary(summary, author_email)
+    initial_summary = format_summary(summary, author_identifiers)
 
     prompt = f"""Based on the following detailed contribution analysis, generate a final consolidated analysis.
     
@@ -278,16 +286,20 @@ def main():
     parser = argparse.ArgumentParser(
         description="Analyze git contributions by author using AI"
     )
-    parser.add_argument("email", help="Author email to analyze")
+    parser.add_argument(
+        "identifiers",
+        nargs="+",
+        help="Author identifiers to analyze (can be names or emails)",
+    )
     parser.add_argument(
         "--max-commits", type=int, help="Maximum number of commits to analyze"
     )
     args = parser.parse_args()
 
     # Get commits
-    commit_log = get_author_commits(args.email, args.max_commits)
+    commit_log = get_author_commits(args.identifiers, args.max_commits)
     if not commit_log:
-        print(f"No commits found for author email: {args.email}")
+        print(f"No commits found for author identifiers: {', '.join(args.identifiers)}")
         return
 
     # Split into chunks and analyze
@@ -302,9 +314,13 @@ def main():
         if i < len(chunks):
             time.sleep(1)  # Rate limiting
 
+    if not analyses:
+        print("No contributions made")
+        return
+
     # Merge analyses and generate final report
     merged_summary = merge_analyses(analyses)
-    final_analysis = generate_final_analysis(merged_summary, args.email)
+    final_analysis = generate_final_analysis(merged_summary, args.identifiers)
     print(final_analysis)
 
 
