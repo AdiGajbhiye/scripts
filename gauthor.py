@@ -36,26 +36,16 @@ def get_author_commits(
         if max_commits:
             base_cmd += f" -n {max_commits}"
 
-        print(f"Executing command: {base_cmd}")
-
         # Run the command using shell=True for more reliable execution
         result = subprocess.run(base_cmd, shell=True, capture_output=True, text=True)
 
         # Check if we got any output
-        if result.returncode != 0:
-            print(f"Error executing git log: {result.stderr}")
+        if result.returncode != 0 or not result.stdout.strip():
             return None
-
-        if not result.stdout.strip():
-            print("No output from git log command")
-            return None
-
-        # Print a sample of the output for debugging
-        print(f"First 200 characters of output: {result.stdout[:200]}")
 
         return result.stdout
     except Exception as e:
-        print(f"Exception in get_author_commits: {e}")
+        print(f"Error getting git log: {e}")
         return None
 
 
@@ -92,7 +82,7 @@ def chunk_commits(commit_log: str) -> List[str]:
     return chunks
 
 
-def analyze_commit_chunk(chunk: str) -> Dict[str, Any]:
+def analyze_commit_chunk(chunk: str) -> Optional[Dict[str, Any]]:
     """Analyze a chunk of commits using Groq API to generate a detailed summary."""
     prompt = f"""Analyze the following git commit history and provide a detailed summary of the author's contributions.
     
@@ -140,17 +130,10 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, Any]:
         return json.loads(json_str)
     except Exception as e:
         print(f"Error analyzing commits with Groq: {e}")
-        return {
-            "summary": "Unable to analyze contributions due to an error.",
-            "features": [],
-            "technologies": [],
-            "code_quality": "No code quality analysis available.",
-            "technical_skills": [],
-            "notable_achievements": [],
-        }
+        return None
 
 
-def merge_analyses(analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
+def merge_analyses(analyses: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Merge multiple chunk analyses into a single comprehensive summary."""
     # Initialize merged result
     merged: Dict[str, Any] = {
@@ -310,12 +293,13 @@ def main():
     for i, chunk in enumerate(chunks, 1):
         print(f"Processing chunk {i}/{len(chunks)}...")
         analysis = analyze_commit_chunk(chunk)
-        analyses.append(analysis)
+        if analysis:
+            analyses.append(analysis)
         if i < len(chunks):
             time.sleep(1)  # Rate limiting
 
     if not analyses:
-        print("No contributions made")
+        print("No contributions found")
         return
 
     # Merge analyses and generate final report
