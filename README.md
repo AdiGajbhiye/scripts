@@ -1,5 +1,7 @@
 # scripts
 
+A list of AI-based utils which I found helpful in my daily life.
+
 ## gcommit - AI-powered Git commit message generator
 
 ### Setup (if not done already):
