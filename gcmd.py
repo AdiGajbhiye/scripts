@@ -35,7 +35,7 @@ def generate_command(natural_language_description):
                     "content": f"Generate a bash command for: {natural_language_description}",
                 },
             ],
-            model="llama-3.3-70b-specdec",
+            model="llama-3.1-8b-instant",
         )
         return chat_completion.choices[0].message.content.strip()
     except Exception as e:
@@ -43,21 +43,29 @@ def generate_command(natural_language_description):
         return None
 
 
-def execute_command(command):
+def execute_command(command, quiet=False):
     """Execute the generated command."""
     try:
         result = subprocess.run(
             command, shell=True, text=True, capture_output=True
         )
-        if result.stdout:
-            print("Output:")
-            print(result.stdout)
-        if result.stderr:
-            print("Errors:")
-            print(result.stderr)
-        return result.returncode == 0
+        if quiet:
+            # In quiet mode, only output stdout for piping
+            if result.stdout:
+                print(result.stdout, end="")
+            return result.returncode == 0
+        else:
+            # In normal mode, show command and output
+            print(f"Command: {command}")
+            print("-" * 50)
+            if result.stdout:
+                print(result.stdout, end="")
+            if result.stderr:
+                print(result.stderr, end="")
+            return result.returncode == 0
     except Exception as e:
-        print("Error executing command:", e)
+        if not quiet:
+            print("Error executing command:", e)
         return False
 
 
@@ -75,6 +83,12 @@ def main():
         action="store_true",
         help="Only display the command without executing it",
     )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Quiet mode - only output command result (for piping)",
+    )
     args = parser.parse_args()
 
     command = generate_command(args.description)
@@ -82,21 +96,11 @@ def main():
         print("Failed to generate command.")
         return
 
-    print(f"Generated command: {command}")
-    
     if args.dry_run:
-        print("Dry run mode - command not executed.")
+        print(f"Generated command: {command}")
         return
 
-    confirm = input("Do you want to execute this command? (y/n): ")
-    if confirm.lower() == "y":
-        success = execute_command(command)
-        if success:
-            print("Command executed successfully.")
-        else:
-            print("Command execution failed.")
-    else:
-        print("Command execution cancelled.")
+    execute_command(command, args.quiet)
 
 
 if __name__ == "__main__":
