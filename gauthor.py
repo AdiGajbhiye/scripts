@@ -77,29 +77,26 @@ def chunk_commits(commit_log: str) -> List[str]:
     return chunks
 
 
-def analyze_commit_chunk(chunk: str) -> Dict[str, List[str]]:
-    """Analyze a chunk of commits using Groq API."""
-    prompt = f"""Analyze the following git commit history and categorize the contributions. 
-    Focus on identifying:
-    1. New features or enhancements
-    2. Bug fixes
-    3. Documentation changes
-    4. Refactoring or code improvements
-    5. Infrastructure or dependency changes
+def analyze_commit_chunk(chunk: str) -> Dict[str, str]:
+    """Analyze a chunk of commits using Groq API to generate a high-level summary."""
+    prompt = f"""Analyze the following git commit history and provide a high-level summary of the author's contributions.
     
-    For each category, provide a concise bullet-point summary.
-    If a category has no entries, omit it.
+    Focus on:
+    1. Overall impact on the codebase
+    2. Key areas of contribution
+    3. Notable achievements or improvements
+    4. Patterns in their work (e.g., focusing on specific features, bug fixes, etc.)
+    
+    Be concise but informative. Highlight the most significant contributions.
     
     Git commit history:
     {chunk}
     
     Respond in the following JSON format:
     {{
-        "features": ["feature 1", "feature 2", ...],
-        "bug_fixes": ["fix 1", "fix 2", ...],
-        "documentation": ["doc change 1", "doc change 2", ...],
-        "refactoring": ["refactor 1", "refactor 2", ...],
-        "infrastructure": ["infra change 1", "infra change 2", ...]
+        "summary": "A concise paragraph summarizing the author's overall contributions",
+        "key_areas": "List of 2-3 key areas where the author made significant contributions",
+        "notable_achievements": "List of 2-3 notable achievements or improvements"
     }}
     """
     
@@ -108,7 +105,7 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, List[str]]:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that analyzes git commit histories.",
+                    "content": "You are a helpful assistant that analyzes git commit histories to provide high-level summaries of contributions.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -118,64 +115,46 @@ def analyze_commit_chunk(chunk: str) -> Dict[str, List[str]]:
         )
         
         response = completion.choices[0].message.content
+        print(prompt, response)
         # Extract JSON from the response
         json_str = response[response.find("{") : response.rfind("}") + 1]
         return json.loads(json_str)
     except Exception as e:
         print(f"Error analyzing commits with Groq: {e}")
         return {
-            "features": [],
-            "bug_fixes": [],
-            "documentation": [],
-            "refactoring": [],
-            "infrastructure": [],
+            "summary": "Unable to analyze contributions due to an error.",
+            "key_areas": "No key areas identified.",
+            "notable_achievements": "No notable achievements identified."
         }
 
 
-def merge_analyses(analyses: List[Dict[str, List[str]]]) -> Dict[str, List[str]]:
+def merge_analyses(analyses: List[Dict[str, str]]) -> Dict[str, str]:
     """Merge multiple chunk analyses into a single summary."""
-    merged: Dict[str, List[str]] = {
-        "features": [],
-        "bug_fixes": [],
-        "documentation": [],
-        "refactoring": [],
-        "infrastructure": [],
-    }
-
-    for analysis in analyses:
-        for category in merged:
-            merged[category].extend(analysis.get(category, []))
-
-    # Remove duplicates while preserving order
-    for category in merged:
-        merged[category] = list(dict.fromkeys(merged[category]))
-
-    return merged
+    if not analyses:
+        return {
+            "summary": "No contributions found.",
+            "key_areas": "No key areas identified.",
+            "notable_achievements": "No notable achievements identified."
+        }
+    
+    # For simplicity, just use the first analysis
+    # In a more sophisticated version, we could combine insights from multiple chunks
+    return analyses[0]
 
 
-def format_summary(summary: Dict[str, List[str]], author_name: str) -> str:
+def format_summary(summary: Dict[str, str], author_name: str) -> str:
     """Format the analysis summary into a readable report."""
     report = [
         f"\n📊 Contribution Analysis for {author_name}",
         "=" * (len(author_name) + 25),
+        f"\n📝 Summary:",
+        f"   {summary.get('summary', 'No summary available.')}",
+        f"\n🎯 Key Areas of Contribution:",
+        f"   {summary.get('key_areas', 'No key areas identified.')}",
+        f"\n🏆 Notable Achievements:",
+        f"   {summary.get('notable_achievements', 'No notable achievements identified.')}"
     ]
-
-    # Add each category if it has entries
-    categories = {
-        "features": "✨ Features & Enhancements",
-        "bug_fixes": "🐛 Bug Fixes",
-        "documentation": "📚 Documentation",
-        "refactoring": "♻️  Refactoring & Improvements",
-        "infrastructure": "🔧 Infrastructure & Dependencies",
-    }
-
-    for key, title in categories.items():
-        items = summary.get(key, [])
-        if items:
-            report.append(f"\n{title}:")
-            for item in items:
-                report.append(f"   • {item}")
-
+    
     return "\n".join(report)
 
 
