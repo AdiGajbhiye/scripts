@@ -164,8 +164,14 @@ def generate_commit_message(diff):
                     "role": "system",
                     "content": (
                         "You are an AI that writes concise and meaningful Git commit messages following the Conventional Commits standard. "
-                        "Ensure the commit message includes a type tag like 'feat:', 'fix:', 'chore:', 'docs:', 'refactor:', 'test:', etc. "
-                        "Just output the commit message. Should be less than 30 words and all lowercase. Should not include quotes."
+                        "The commit message MUST follow this exact format: type: description\n"
+                        "Where type is one of: feat, fix, chore, docs, refactor, test, etc.\n"
+                        "The description should be a short summary of changes.\n"
+                        "DO NOT use parentheses in the output.\n"
+                        "DO NOT include quotes.\n"
+                        "Keep it under 30 words and all lowercase.\n"
+                        "Example good format: 'fix: optimize git diff for large files'\n"
+                        "Example bad format: 'fix(get_git_diff): optimize for large files'"
                     ),
                 },
                 {
@@ -178,7 +184,13 @@ def generate_commit_message(diff):
             ],
             model="llama-3.1-8b-instant",
         )
-        return chat_completion.choices[0].message.content.strip()
+        message = chat_completion.choices[0].message.content.strip()
+        
+        # Clean up any remaining parentheses if they somehow got through
+        message = re.sub(r'\([^)]*\):', ':', message)
+        message = re.sub(r'\s+', ' ', message).strip()
+        
+        return message
     except Exception as e:
         print("Error generating commit message:", e)
         return None
