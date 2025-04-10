@@ -110,27 +110,34 @@ def summarize_diff_chunk(chunk):
         return None
 
 
+def process_diff(diff):
+    """Process a diff by optimizing and chunking if necessary."""
+    if not diff:
+        return None
+
+    # Optimize the diff
+    optimized_diff = optimize_diff(diff)
+
+    # If diff is too large, chunk it
+    if len(optimized_diff) > 4000:
+        chunks = chunk_diff(optimized_diff)
+        summaries = []
+        for chunk in chunks:
+            summary = summarize_diff_chunk(chunk)
+            if summary:
+                summaries.append(summary)
+        return "\n\n".join(summaries)
+
+    return optimized_diff
+
+
 def get_git_diff():
     """Get the current git diff as a string."""
     try:
         result = subprocess.run(
             ["git", "diff", "--cached"], capture_output=True, text=True
         )
-        diff = result.stdout.strip()
-
-        # Optimize the diff
-        optimized_diff = optimize_diff(diff)
-        # If diff is too large, chunk it
-        if len(optimized_diff) > 4000:
-            chunks = chunk_diff(optimized_diff)
-            summaries = []
-            for chunk in chunks:
-                summary = summarize_diff_chunk(chunk)
-                if summary:
-                    summaries.append(summary)
-            return "\n\n".join(summaries)
-
-        return optimized_diff
+        return process_diff(result.stdout.strip())
     except Exception as e:
         print("Error fetching git diff:", e)
         return None
@@ -144,7 +151,7 @@ def get_git_commit_content(commit_hash):
             capture_output=True,
             text=True,
         )
-        return result.stdout.strip()
+        return process_diff(result.stdout.strip())
     except Exception as e:
         print(f"Error fetching git diff for {commit_hash}:", e)
         return None
@@ -249,20 +256,7 @@ def get_last_commit_messages():
             diff = get_git_commit_content(commit_hash)
             if not diff:
                 continue
-            # Optimize the diff
-            optimized_diff = optimize_diff(diff)
-
-            # If diff is too large, chunk it
-            if len(optimized_diff) > 4000:
-                chunks = chunk_diff(optimized_diff)
-                summaries = []
-                for chunk in chunks:
-                    summary = summarize_diff_chunk(chunk)
-                    if summary:
-                        summaries.append(summary)
-                optimized_diff = "\n\n".join(summaries)
-
-            generated_message = generate_commit_message(optimized_diff)
+            generated_message = generate_commit_message(diff)
             print(f"Commit {commit_hash[:7]}: {generated_message}")
     except Exception as e:
         print("Error fetching commit diffs:", e)
