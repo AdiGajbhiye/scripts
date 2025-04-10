@@ -164,14 +164,25 @@ def generate_commit_message(diff):
                     "role": "system",
                     "content": (
                         "You are an AI that writes concise and meaningful Git commit messages following the Conventional Commits standard. "
-                        "The commit message MUST follow this exact format: type: description\n"
-                        "Where type is one of: feat, fix, chore, docs, refactor, test, etc.\n"
-                        "The description should be a short summary of changes.\n"
-                        "DO NOT use parentheses in the output.\n"
-                        "DO NOT include quotes.\n"
+                        "IMPORTANT: The commit message MUST follow this EXACT format: type: description\n"
+                        "Where type is EXACTLY one of these words: feat, fix, chore, docs, refactor, test\n"
+                        "NEVER use parentheses, scopes, or any other formatting.\n"
+                        "NEVER include quotes.\n"
                         "Keep it under 30 words and all lowercase.\n"
-                        "Example good format: 'fix: optimize git diff for large files'\n"
-                        "Example bad format: 'fix(get_git_diff): optimize for large files'"
+                        "The description should be a single, concise sentence.\n"
+                        "DO NOT use multiple sentences or lists.\n"
+                        "DO NOT include implementation details.\n"
+                        "Examples of CORRECT format:\n"
+                        "- fix: optimize git diff for large files\n"
+                        "- feat: add new command line argument\n"
+                        "- docs: update readme with installation steps\n"
+                        "Examples of INCORRECT format (DO NOT USE):\n"
+                        "- fix(improved error checking)\n"
+                        "- feat(gauthor): refactor analyze function\n"
+                        "- fix (parser): update parsing logic\n"
+                        "- fix: update get_author_commits to fetch detailed information. refactor: enhance analysis_commit_chunk\n"
+                        "- feat: improve gauthor.py functionality by removing duplicate code, handling errors\n"
+                        "- fix: update imports to remove type: ignore This commit message follows the Conventional Commits standard\n"
                     ),
                 },
                 {
@@ -187,8 +198,12 @@ def generate_commit_message(diff):
         message = chat_completion.choices[0].message.content.strip()
         
         # Clean up any remaining parentheses if they somehow got through
-        message = re.sub(r'\([^)]*\):', ':', message)
-        message = re.sub(r'\s+', ' ', message).strip()
+        message = re.sub(r"\([^)]*\):", ":", message)
+        message = re.sub(r"\s+", " ", message).strip()
+        
+        # Ensure single sentence
+        if "." in message:
+            message = message.split(".")[0].strip()
         
         return message
     except Exception as e:
