@@ -120,7 +120,6 @@ def get_git_diff():
 
         # Optimize the diff
         optimized_diff = optimize_diff(diff)
-
         # If diff is too large, chunk it
         if len(optimized_diff) > 4000:
             chunks = chunk_diff(optimized_diff)
@@ -196,15 +195,15 @@ def generate_commit_message(diff):
             model="llama-3.1-8b-instant",
         )
         message = chat_completion.choices[0].message.content.strip()
-        
+
         # Clean up any remaining parentheses if they somehow got through
         message = re.sub(r"\([^)]*\):", ":", message)
         message = re.sub(r"\s+", " ", message).strip()
-        
+
         # Ensure single sentence
         if "." in message:
             message = message.split(".")[0].strip()
-        
+
         return message
     except Exception as e:
         print("Error generating commit message:", e)
@@ -248,9 +247,23 @@ def get_last_commit_messages():
 
         for commit_hash in commit_hashes:
             diff = get_git_commit_content(commit_hash)
-            if diff:
-                generated_message = generate_commit_message(diff)
-                print(f"Commit {commit_hash[:7]}: {generated_message}")
+            if not diff:
+                continue
+            # Optimize the diff
+            optimized_diff = optimize_diff(diff)
+
+            # If diff is too large, chunk it
+            if len(optimized_diff) > 4000:
+                chunks = chunk_diff(optimized_diff)
+                summaries = []
+                for chunk in chunks:
+                    summary = summarize_diff_chunk(chunk)
+                    if summary:
+                        summaries.append(summary)
+                optimized_diff = "\n\n".join(summaries)
+
+            generated_message = generate_commit_message(optimized_diff)
+            print(f"Commit {commit_hash[:7]}: {generated_message}")
     except Exception as e:
         print("Error fetching commit diffs:", e)
 
