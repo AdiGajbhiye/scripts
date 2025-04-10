@@ -58,7 +58,7 @@ def chunk_diff(diff, max_chunk_size=4000):
     if not diff:
         return []
 
-    # Split by file diffs
+    # Split by file diffs first
     file_diffs = re.split(r"^diff --git", diff, flags=re.MULTILINE)
     chunks = []
     current_chunk = []
@@ -68,14 +68,40 @@ def chunk_diff(diff, max_chunk_size=4000):
         if not file_diff.strip():
             continue
 
-        # If adding this file would exceed chunk size, start a new chunk
-        if current_size + len(file_diff) > max_chunk_size and current_chunk:
-            chunks.append("".join(current_chunk))
-            current_chunk = []
-            current_size = 0
+        # If a single file diff is too large, split it by hunks
+        if len(file_diff) > max_chunk_size:
+            # Split by hunk headers (@@ -line,count +line,count @@)
+            hunks = re.split(
+                r"(^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)", file_diff, flags=re.MULTILINE
+            )
+            current_hunk = []
+            current_hunk_size = 0
 
-        current_chunk.append(file_diff)
-        current_size += len(file_diff)
+            for hunk in hunks:
+                if not hunk.strip():
+                    continue
+
+                # If adding this hunk would exceed chunk size, start a new chunk
+                if current_hunk_size + len(hunk) > max_chunk_size and current_hunk:
+                    chunks.append("".join(current_hunk))
+                    current_hunk = []
+                    current_hunk_size = 0
+
+                current_hunk.append(hunk)
+                current_hunk_size += len(hunk)
+
+            # Add the last hunk chunk if it exists
+            if current_hunk:
+                chunks.append("".join(current_hunk))
+        else:
+            # If adding this file would exceed chunk size, start a new chunk
+            if current_size + len(file_diff) > max_chunk_size and current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_size = 0
+
+            current_chunk.append(file_diff)
+            current_size += len(file_diff)
 
     # Add the last chunk if it exists
     if current_chunk:
@@ -126,7 +152,7 @@ def process_diff(diff):
             summary = summarize_diff_chunk(chunk)
             if summary:
                 summaries.append(summary)
-        return "\n\n".join(summaries)
+        return "\n\n".join(summaries) if summaries else optimized_diff
 
     return optimized_diff
 
